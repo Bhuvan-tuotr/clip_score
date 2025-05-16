@@ -1,26 +1,25 @@
-FROM python:3.10-slim
-
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Use the official PyTorch image with CUDA (or switch to CPU-only if needed)
+FROM pytorch/pytorch:2.2.1-cuda11.8-cudnn8-runtime
 
 # Set working directory
 WORKDIR /app
 
-# Copy project files
-COPY . /app
+# Copy requirements and install dependencies
+COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+# Install system dependencies and Python packages
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
-# Expose port
-EXPOSE 8000
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Start FastAPI server
-CMD ["uvicorn", "clip_score:app", "--host", "0.0.0.0", "--port", "8000"]
+# Copy your app code
+COPY . .
+
+# Expose Flask port
+EXPOSE 5000
+
+# Run the Flask app
+CMD ["python", "\clip_score.py"]
