@@ -7,21 +7,20 @@ import requests
 from transformers import CLIPProcessor, CLIPModel
 from io import BytesIO
 
-# Load the CLIP model and processor once
+# Initialize FastAPI app
+app = FastAPI()
+
+# Load CLIP model and processor
 model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
-# Initialize FastAPI
-app = FastAPI(title="CLIP Image Matcher")
-
-# Request model
+# Define request model
 class MatchRequest(BaseModel):
-    image_urls: List[str]
-    description: str
-    threshold: Optional[float] = 80.0
+    caption: str
+    image_url: List[str]
 
-# Helper function to fetch and process an image
-def get_image_from_url(url: str) -> Optional[Image.Image]:
+# Helper function to load image from URL
+def get_image_from_url(url):
     try:
         response = requests.get(url)
         response.raise_for_status()
@@ -30,22 +29,31 @@ def get_image_from_url(url: str) -> Optional[Image.Image]:
         print(f"Error loading {url}: {e}")
         return None
 
-# Compute similarity score between image and text
-def compute_similarity_score(image: Image.Image, text: str) -> float:
+# Function to compute similarity score
+def compute_similarity_score(image, text):
     inputs = processor(text=[text], images=[image], return_tensors="pt", padding=True)
     with torch.no_grad():
         outputs = model(**inputs)
         similarity = outputs.logits_per_image[0][0].item()
-    return (similarity / 30) * 100  # Normalize to 0–100
 
-# FastAPI endpoint
-@app.post("/match-image")
-def find_matching_image(req: MatchRequest):
-    for url in req.image_urls:
+    score = (similarity / 30) * 100  # Normalize to 0–100
+    return score
+
+# Core matching function
+def find_matching_image_url(image_urls, description, threshold=80):
+    for url in image_urls:
         image = get_image_from_url(url)
         if image is None:
             continue
-        score = compute_similarity_score(image, req.description)
-        if score >= req.threshold:
-            return {"url": url, "score": round(score, 2)}
-    raise HTTPException(status_code=404, detail="No matching image found.")
+        score = compute_similarity_score(image, description)
+        if score >= threshold:
+            return {"url": url, "score": score}
+    return None
+
+# FastAPI endpoint
+@app.post("/match-image/")
+def match_image(request: MatchRequest):
+    result = find_matching_image_url(request.image_url, request.caption)
+    if result:
+        return result
+    raise HTTPException(status_code=404, detail="No matching image found")
